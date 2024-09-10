@@ -1,2 +1,1 @@
-# GC_kinematics_v2
- 
+# GC_kinematics 
