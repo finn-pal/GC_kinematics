@@ -68,3 +68,43 @@ def main_prog(halt) -> list[int]:
     tid_main_lst = halt["tid"][main_halo_lst]
 
     return tid_main_lst
+
+
+def naming_value(flag) -> int:
+    """
+    Converts flag value to interger for input into file naming for processed data
+
+    Args:
+        flag (_type_): Flag value (can be 0, 1, or None)
+
+    Returns:
+        int: Flag for file name (0, 1 or 2)
+    """
+    if flag is None:
+        flag_name = 2
+    else:
+        flag_name = flag
+    return flag_name
+
+
+def get_descendants(halo_tid: int, halt) -> list[int]:
+    """
+    Get list of descendents (tid's) of the halo in question
+
+    Args:
+        halo_tid (int): Halo id from the halo tree
+        halt (_type_): Halo tree
+
+    Returns:
+        list[int]: A list of descendant halos (list of tid's)
+    """
+    halo_idx = np.where(halt["tid"] == halo_tid)[0][0]
+    halo_snap = halt["snapshot"][halo_idx]
+    desc_lst = [halo_idx]
+
+    # get a list of all descendents of the halo up to z = 0
+    for _ in range(halo_snap, 600):
+        idx = halt["descendant.index"][desc_lst[-1]]
+        desc_lst.append(idx)
+
+    return desc_lst

@@ -4,7 +4,7 @@ import pandas as pd
 from astropy.io import ascii
 from tqdm import tqdm
 
-from tools.utils import block_print, enable_print, get_halo_cid, main_prog
+from tools.utils import block_print, enable_print, get_descendants, get_halo_cid, main_prog, naming_value
 
 
 def particle_type(quality: int) -> str:
@@ -75,15 +75,8 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
             content = content[5:]
         snap_all = ascii.read(content)
 
-        # get halo snapshot and descendent of the halo
-        halo_idx = np.where(halt["tid"] == halo_tid)[0][0]
-        halo_snap = halt["snapshot"][halo_idx]
-        desc_lst = [halo_idx]
-
-        # get a list of all descendents of the halo up to z = 0
-        for _ in range(halo_snap, 600):
-            idx = halt["descendant.index"][desc_lst[-1]]
-            desc_lst.append(idx)
+        # get list of descendents (tid's) of the halo
+        desc_lst = get_descendants(halo_tid, halt)
 
         # find which descendent of the halo of formation has been accreted into the main galaxy
         idx_lst = np.array([1 if halt["tid"][idx] in tid_main_lst else 0 for idx in desc_lst])
@@ -102,10 +95,8 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
             t_acc = t_acc
             halo_acc_tid = halt["tid"][desc_lst[idx_acc]]
             halo_acc_cid, snap_acc = get_halo_cid(halt, halo_acc_tid, fire_dir)
-            # snap_acc = snap_acc
             halo_pre_acc_tid = halt["tid"][desc_lst[idx_pre_acc]]
             halo_pre_acc_cid, snap_pre_acc = get_halo_cid(halt, halo_pre_acc_tid, fire_dir)
-            # snap_pre_acc = halt["snapshot"][desc_lst[idx_pre_acc]]
             acc_survive = 1  # survived
 
         # if gc disrupted at the time of accretion then get all details of accretion
@@ -116,10 +107,8 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
             t_acc = t_acc
             halo_acc_tid = halt["tid"][desc_lst[idx_acc]]
             halo_acc_cid, snap_acc = get_halo_cid(halt, halo_acc_tid, fire_dir)
-            # snap_acc = snap_acc
             halo_pre_acc_tid = halt["tid"][desc_lst[idx_pre_acc]]
             halo_pre_acc_cid, snap_pre_acc = get_halo_cid(halt, halo_pre_acc_tid, fire_dir)
-            # snap_pre_acc = halt["snapshot"][desc_lst[idx_pre_acc]]
             acc_survive = 0  # did not survived
 
         # if gc disrupted before halo is accreted then set all values to -1
@@ -147,6 +136,10 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
     }
 
     return accretion_dict
+
+
+# def group_accretion(df: pd.DataFrame):
+#     df.
 
 
 def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_flag=None, accretion_flag=None):
@@ -195,18 +188,20 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
         pro_df = pro_df[pro_df["survive_flag"] == survive_flag]
         pro_df = pro_df.reset_index(drop=True)
 
-    # get accretion flag and then filter based on accretion flag
+    # get accretion flag
+    halo_tid_lst = pro_df["halo(zform)"]
+    acc_flag_list = []
+    for halo_tid in halo_tid_lst:
+        if halo_tid in tid_main_lst:
+            acc_flag_list.append(0)
+        else:
+            acc_flag_list.append(1)
+    pro_df.loc[:, "accretion_flag"] = acc_flag_list
+
+    # filter based on accretion flag
     if accretion_flag is None:
         pro_df = pro_df
     else:
-        halo_tid_lst = pro_df["halo(zform)"]
-        acc_flag_list = []
-        for halo_tid in halo_tid_lst:
-            if halo_tid in tid_main_lst:
-                acc_flag_list.append(0)
-            else:
-                acc_flag_list.append(1)
-        pro_df.loc[:, "accretion_flag"] = acc_flag_list
         pro_df = pro_df[pro_df["accretion_flag"] == accretion_flag]
 
     # empty lists to be filled
@@ -247,20 +242,9 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
     pro_df.loc[:, "survived_accretion"] = acc_survive_lst
 
     # file naming based on flags used such as to ensure different filtered data is not overwritten
-    if real_flag is None:
-        r = 2
-    else:
-        r = real_flag
-
-    if survive_flag is None:
-        s = 2
-    else:
-        s = survive_flag
-
-    if accretion_flag is None:
-        a = 2
-    else:
-        a = accretion_flag
+    r = naming_value(real_flag)
+    s = naming_value(survive_flag)
+    a = naming_value(accretion_flag)
 
     # save file to hdf5
     save_file = pro_dir + "pro_it%d_r%d_s%d_a%d.hdf5" % (it, r, s, a)

@@ -2,7 +2,7 @@ from tools.convert_data import convert_data
 from tools.process_data import process_data
 
 # variables
-it = 1
+it = 2
 offset = 4
 
 # directories
