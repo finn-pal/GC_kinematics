@@ -138,8 +138,30 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
     return accretion_dict
 
 
-# def group_accretion(df: pd.DataFrame):
-#     df.
+def group_accretion(df: pd.DataFrame) -> list[int]:
+    """
+    Group accretion's together for easy identification. Group 0 is in-situ formation, -1 is gc's disrupted
+    before accretion and all other values relate to the halo tid of the gc the snapshot before accretion.
+
+    Args:
+        df (pd.DataFrame): processed data frame
+
+    Returns:
+        list[int]: list of group id's to be added to dataframe
+    """
+    group_id_lst = []
+
+    for pre_acc_halo_tid, accretion_flag in zip(df["pre_accretion_halo_tid"], df["accretion_flag"]):
+        if accretion_flag == 0:
+            group_id_lst.append(0)
+
+        elif pre_acc_halo_tid == -1:
+            group_id_lst.append(-1)
+
+        else:
+            group_id_lst.append(pre_acc_halo_tid)
+
+    return group_id_lst
 
 
 def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_flag=None, accretion_flag=None):
@@ -240,6 +262,10 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
     pro_df.loc[:, "pre_accretion_halo_cid"] = halo_pre_acc_cid_lst
     pro_df.loc[:, "pre_accretion_snapshot"] = snap_pre_acc_lst
     pro_df.loc[:, "survived_accretion"] = acc_survive_lst
+
+    # add accretion group
+    group_id_lst = group_accretion(pro_df)
+    pro_df.loc[:, "group_id"] = group_id_lst
 
     # file naming based on flags used such as to ensure different filtered data is not overwritten
     r = naming_value(real_flag)

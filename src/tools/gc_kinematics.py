@@ -1,7 +1,7 @@
 import halo_analysis as halo
 import numpy as np
 import pandas as pd
-from utils import get_descendants, naming_value
+from utils import get_descendants, main_prog, naming_value
 
 #################### function inputs
 it = 1
@@ -34,50 +34,23 @@ a = naming_value(file_accretion_flag)
 pro_file = pro_dir + "pro_it%d_r%d_s%d_a%d.hdf5" % (it, r, s, a)
 
 halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
+tid_main_lst = main_prog(halt)
+
 
 # open interim data file
 pro_df = pd.read_hdf(pro_file, "df")
-pro_df = pro_df.sort_values(by=["snapnum(zform)"], ascending=True)
-pro_df = pro_df.reset_index(drop=True)
 
-halo_group_lst = []
-group_id = []
+group_id_lst = []
 
-for accretion in pro_df["accretion_flag"]:
-    if accretion == 0:
-        group_id.append(0)
-    else:
-        group_id.append(-1)
+for pre_acc_halo_tid, accretion_flag in zip(pro_df["pre_accretion_halo_tid"], pro_df["accretion_flag"]):
+    if accretion_flag == 0:
+        group_id_lst.append(0)
 
-# print(pro_df)
-
-for idx in range(0, len(pro_df)):
-    print(idx)
-    if group_id[idx] == 0:
-        continue
+    elif pre_acc_halo_tid == -1:
+        group_id_lst.append(-1)
 
     else:
-        halo_tid = pro_df["halo(zform)"][idx]
-
-        new_halo_group = get_descendants(halo_tid, halt)
-        halo_group_lst.append(new_halo_group)
-
-        for count, halo_group in enumerate(halo_group_lst):
-            group = count + 1
-            if halo_tid in halo_group:
-                group_id[idx] = group
-            else:
-                new_group_num = len(halo_group_lst) + 1
-                group_id[idx] = new_group_num
-                new_halo_group = get_descendants(halo_tid, halt)
-                halo_group_lst.append(new_halo_group)
-
-
-print(len(halo_group_lst))
-
-# halo_group = get_descendants(halo_tid, halt)
-
-# halo_group_lst.append(halo_group)
+        group_id_lst.append(pre_acc_halo_tid)
 
 
 ################################################
