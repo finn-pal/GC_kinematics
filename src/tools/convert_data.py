@@ -109,6 +109,11 @@ def convert_data(it: int, offset: int, fire_dir: str, data_dir: str, public_snap
         pub_idx = [len(pub_idx) if idx == len(pub_idx) else idx for idx in pub_idx]
         int_df["pubsnap(zform)"] = [snap_pub[idx] for idx in pub_idx]
 
+        # get last snap where alive
+        dis_idx = np.searchsorted(np.array(snap_all["time[Gyr]"]), int_df["t_dis"])
+        dis_idx = [len(dis_idx) if idx == len(dis_idx) else idx for idx in dis_idx]
+        int_df["last_snap"] = [snap_all["i"][idx - 1] for idx in dis_idx]
+
         # set a "real flag" which excludes gc's that have been disrupted but do not have a time of discruption.
         # the candidates for this are usually repeated gc particle ids in adjacent public snapshots.
         int_df.loc[:, "real_flag"] = np.where((int_df["logM(z=0)"] == -1) & (int_df["t_dis"] == -1), 0, 1)

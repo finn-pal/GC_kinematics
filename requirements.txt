@@ -1,3 +1,4 @@
+agama==1.0
 appnope==0.1.4
 astropy==6.1.1
 astropy-iers-data==0.2024.7.8.0.31.19
@@ -6,13 +7,16 @@ blosc2==2.7.1
 cmyt==2.0.0
 comm==0.2.2
 contourpy==1.2.1
+cvxopt==1.3.2
 cycler==0.12.1
+Cython==3.0.11
 debugpy==1.8.2
 decorator==5.1.1
 ewah_bool_utils==1.2.2
 executing==2.0.1
 fonttools==4.53.0
-# -e git+https://github.com/ybillchen/GC_formation_model.git@3f40db6851042c054a9231d9564a2c739fdccbc5#egg=GC_formation_model # do this via instructions in docs
+galpy==1.10.0
+-e git+https://github.com/ybillchen/GC_formation_model.git@3f40db6851042c054a9231d9564a2c739fdccbc5#egg=GC_formation_model
 gizmo_analysis==1.0.2
 h5py==3.11.0
 halo_analysis==1.0.2
@@ -52,7 +56,7 @@ pytz==2024.1
 PyYAML==6.0.1
 pyzmq==26.1.0
 scipy==1.14.0
-setuptools==73.0.1
+setuptools==74.1.2
 six==1.16.0
 stack-data==0.6.3
 style==1.1.0

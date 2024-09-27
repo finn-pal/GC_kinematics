@@ -4,7 +4,7 @@ import os
 from params.m12i_params import params
 from tools.gc_model import run_gc_model
 
-it = 1
+it = 100
 
 resultspath = params["resultspath"]
 resultspath = resultspath + str("it_%d/" % it)

@@ -263,6 +263,13 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
     pro_df.loc[:, "pre_accretion_snapshot"] = snap_pre_acc_lst
     pro_df.loc[:, "survived_accretion"] = acc_survive_lst
 
+    ptype_lst = []
+    for qual in pro_df["quality"]:
+        ptype = particle_type(qual)
+        ptype_lst.append(ptype)
+
+    pro_df.loc[:, "ptype"] = ptype_lst
+
     # add accretion group
     group_id_lst = group_accretion(pro_df)
     pro_df.loc[:, "group_id"] = group_id_lst
