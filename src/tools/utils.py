@@ -46,9 +46,9 @@ def get_halo_cid(halt, halo_tid: int, fire_dir: str) -> tuple[int, int]:
     return halo_cid, snap
 
 
-def main_prog(halt) -> list[int]:
+def main_prog_halt(halt) -> list[int]:
     """
-    Get a list of the halo tree ids for the most massive progenitors of the main galaxy
+    Get a list of the halo tree ids for the most massive progenitors of the main galaxy from gizmo halo tree
 
     Args:
         halt (_type_): Halo tree
@@ -70,6 +70,31 @@ def main_prog(halt) -> list[int]:
     return tid_main_lst
 
 
+def main_prog_yt(f_tree, main_halo) -> list[int]:
+    """
+    Get a list of the halo tree ids for the most massive progenitors of the main galaxy from GC YT tree
+
+    Args:
+        f_tree (_type_): Halo tree
+
+    Returns:
+        list[int]: List of halo tree halo ids (tid) tracing the main progenitors of the most massive galaxy at
+        z = 0.
+    """
+    # get index of main halo in tree
+    main_halo_idx = np.where(np.array(f_tree["SubhaloID"]) == main_halo)[0][0]
+    main_halo_lst = [main_halo_idx]
+
+    for _ in range(1, 590):
+        halo_id = f_tree["FirstProgenitorID"][main_halo_lst[-1]]
+        idx = np.where(np.array(f_tree["SubhaloID"]) == halo_id)[0][0]
+        main_halo_lst.append(idx)
+
+    tid_main_lst = f_tree["SubhaloID"][main_halo_lst]
+
+    return tid_main_lst
+
+
 def naming_value(flag) -> int:
     """
     Converts flag value to interger for input into file naming for processed data
@@ -87,7 +112,7 @@ def naming_value(flag) -> int:
     return flag_name
 
 
-def get_descendants(halo_tid: int, halt) -> list[int]:
+def get_descendants_halt(halo_tid: int, halt) -> list[int]:
     """
     Get list of descendents (tid's) of the halo in question
 
@@ -105,6 +130,30 @@ def get_descendants(halo_tid: int, halt) -> list[int]:
     # get a list of all descendents of the halo up to z = 0
     for _ in range(halo_snap, 600):
         idx = halt["descendant.index"][desc_lst[-1]]
+        desc_lst.append(idx)
+
+    return desc_lst
+
+
+def get_descendants_yt(halo_tid: int, offset: int, f_tree) -> list[int]:
+    """
+    Get list of descendents (tid's) of the halo in question
+
+    Args:
+        halo_tid (int): Halo id from the halo tree
+        offset (int): Offset from GC formation model interface
+        f_tree (_type_): Halo tree
+
+    Returns:
+        list[int]: A list of descendant halos (list of tid's)
+    """
+    halo_idx = np.where(np.array(f_tree["SubhaloID"]) == halo_tid)[0][0]
+    halo_snap = f_tree["SnapNum"][halo_idx]
+    desc_lst = [halo_idx]
+
+    for _ in range(halo_snap, 600 - offset):
+        halo_des = f_tree["DescendantID"][desc_lst[-1]]
+        idx = np.where(np.array(f_tree["SubhaloID"]) == halo_des)[0][0]
         desc_lst.append(idx)
 
     return desc_lst

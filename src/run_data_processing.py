@@ -1,8 +1,10 @@
 from tools.convert_data import convert_data
-from tools.process_data import process_data
+from tools.process_data_gizmo import process_data
+
+# from tools.process_data_yt import process_data
 
 # variables
-it_lst = [100]
+it_lst = [0]
 offset = 4
 
 # directories

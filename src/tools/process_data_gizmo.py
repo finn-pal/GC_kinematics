@@ -4,7 +4,14 @@ import pandas as pd
 from astropy.io import ascii
 from tqdm import tqdm
 
-from tools.utils import block_print, enable_print, get_descendants, get_halo_cid, main_prog, naming_value
+from tools.utils import (
+    block_print,
+    enable_print,
+    get_descendants_halt,
+    get_halo_cid,
+    main_prog_halt,
+    naming_value,
+)
 
 
 def particle_type(quality: int) -> str:
@@ -76,7 +83,7 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
         snap_all = ascii.read(content)
 
         # get list of descendents (tid's) of the halo
-        desc_lst = get_descendants(halo_tid, halt)
+        desc_lst = get_descendants_halt(halo_tid, halt)
 
         # find which descendent of the halo of formation has been accreted into the main galaxy
         idx_lst = np.array([1 if halt["tid"][idx] in tid_main_lst else 0 for idx in desc_lst])
@@ -186,7 +193,7 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
         enable_print()
 
     # get list of main progenitors of most massive galaxy across all redshifts
-    tid_main_lst = main_prog(halt)
+    tid_main_lst = main_prog_halt(halt)
 
     # file details
     int_dir = data_dir + "/interim/"
