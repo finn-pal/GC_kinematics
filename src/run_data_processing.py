@@ -1,10 +1,12 @@
-from tools.convert_data import convert_data
-from tools.process_data_gizmo import process_data
+# from tools.convert_data_v1 import convert_data
+# from tools.process_data_v1 import process_data
+
+from tools.convert_data_v2 import convert_data
 
 # from tools.process_data_yt import process_data
 
 # variables
-it_lst = [0]
+it_lst = [0, 1, 2, 3, 100]
 offset = 4
 
 # directories
@@ -19,4 +21,4 @@ accretion_flag = None  # (1 for accreted, 0 for not accreted, None for both)
 
 for it in it_lst:
     convert_data(it, offset, fire_dir, data_dir, snapshot_times_pub)
-    process_data(it, fire_dir, data_dir, real_flag, survive_flag, accretion_flag)
+    # process_data(it, fire_dir, data_dir, real_flag, survive_flag, accretion_flag)
