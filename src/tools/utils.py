@@ -1,8 +1,10 @@
 import os
 import sys
 
+import gizmo_analysis as gizmo
 import halo_analysis as halo
 import numpy as np
+from tqdm import tqdm
 
 
 def block_print():
@@ -46,7 +48,7 @@ def get_halo_cid(halt, halo_tid: int, fire_dir: str) -> tuple[int, int]:
     return halo_cid, snap
 
 
-def main_prog_halt(halt) -> list[int]:
+def main_prog_halt(halt, main_halo_tid) -> list[int]:
     """
     Get a list of the halo tree ids for the most massive progenitors of the main galaxy from gizmo halo tree
 
@@ -58,7 +60,8 @@ def main_prog_halt(halt) -> list[int]:
         z = 0.
     """
     # main galaxy has index 0 in the halo tree
-    main_halo_lst = [0]
+    main_halo_idx = np.where(halt["tid"] == main_halo_tid)[0][0]
+    main_halo_lst = [main_halo_idx]
 
     # FIRE has 600 snapshots but progenitor has usally not formed much earlier than snapshot 10
     for _ in range(1, 590):
@@ -157,3 +160,82 @@ def get_descendants_yt(halo_tid: int, offset: int, f_tree) -> list[int]:
         desc_lst.append(idx)
 
     return desc_lst
+
+
+def iteration_name(it: int) -> str:
+    """
+    Get 3 digit iteration id name from iteration number
+
+    Args:
+        it (int): Iteration number.
+
+    Returns:
+        str: Iteration id name.
+    """
+    # ensure group naming is consitent with three digits
+    if len(str(it)) == 1:
+        it_id = "it00" + str(it)
+    elif len(str(it)) == 2:
+        it_id = "it0" + str(it)
+    else:
+        it_id = "it" + str(it)
+
+    return it_id
+
+
+def get_halo_tree(fire_dir: str):
+    """
+    Given directory to simulation returns halo tree.
+
+    Args:
+        fire_dir (str): Directory of the FIRE simulation data (of form "/m12i_res7100").
+
+    Returns:
+        _type_: Halo tree.
+    """
+    for _ in tqdm(range(1), ncols=150, desc="Retrieving Halo Tree....................."):
+        block_print()  # block verbose print statements
+        halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
+        enable_print()
+
+    return halt
+
+
+def open_snapshot(snapshot: int, fire_dir: str):
+    """
+    Get the particle details for a given snapshot. This contains all particles in publicly available snapshots
+    with the coordinate frame to be centred on the central galaxy.
+
+    Args:
+        snapshot (int): Snapshot.
+        fire_dir (str): Directory of the FIRE simulation data (of form "/m12i_res7100").
+
+    Returns:
+        _type_: The particle details for a given snapshot
+    """
+    for _ in tqdm(range(1), ncols=150, desc="Retrieving Snapshot %d.................." % snapshot):
+        block_print()  # block verbose print statements
+        part = gizmo.io.Read.read_snapshots("all", "index", snapshot, fire_dir, assign_hosts_rotation=True)
+        enable_print()
+    return part
+
+
+def snapshot_name(snap_num: int):
+    """
+    Get 3 digit iteration id name from snapshot.
+
+    Args:
+        snap_num (int): Snapshot.
+
+    Returns:
+        str: Snapshot id name.
+    """
+    # ensure group naming is consitent with three digits
+    if len(str(snap_num)) == 1:
+        snap_id = "snap00" + str(snap_num)
+    elif len(str(snap_num)) == 2:
+        snap_id = "snap0" + str(snap_num)
+    else:
+        snap_id = "snap" + str(snap_num)
+
+    return snap_id

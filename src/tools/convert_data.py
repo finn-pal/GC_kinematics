@@ -1,7 +1,12 @@
+import os
+
+import h5py
 import numpy as np
 import pandas as pd
 from astropy.io import ascii
 from tqdm import tqdm
+
+from tools.utils import iteration_name
 
 
 def convert_data(it: int, offset: int, fire_dir: str, data_dir: str, public_snapshot_fil: str):
@@ -16,10 +21,13 @@ def convert_data(it: int, offset: int, fire_dir: str, data_dir: str, public_snap
         data_dir (str): Directory where raw / interim / processed data is stored (of form "result/m12i").
         public_snapshot_fil (str): Location of file that stores which snapshots have been publically released.
     """
-    for _ in tqdm(range(10), desc="Converting Data..."):
+    # ensure group naming is consitent with three digits
+    it_group = iteration_name(it)
+
+    for _ in tqdm(range(1), ncols=150, desc=it_group + " Converting Data...................."):
         # data directory
         raw_dir = data_dir + "/raw/it_%d/" % it
-        int_dir = data_dir + "/interim/"
+
         # output files from the gc model
         main_fil = "allcat_s-%d_p2-7_p3-1.txt" % it
         disrupt_fil = "allcat_s-%d_p2-7_p3-1_k-1.5_logm_snap596.txt" % it
@@ -82,10 +90,23 @@ def convert_data(it: int, offset: int, fire_dir: str, data_dir: str, public_snap
             ]
         ].copy()
 
+        columns = {
+            "GC_ID": "gc_id",
+            "halo(z=0)": "halo_z0",
+            "logM(tform)": "logm_tform",
+            "halo(zform)": "halo_zform",
+            "snapnum(zform)": "snap_zform",
+            "isMPB": "is_mpb",
+            "logM(z=0)": "logm_z0",
+        }
+
+        # rename columns
+        int_df = int_df.rename(columns=columns)
+
         # convert snapshots from yt form into gizmo form by adding offset used in the interface
-        int_df.loc[:, "snapnum(zform)"] = int_df.loc[:, "snapnum(zform)"] + offset
+        int_df.loc[:, "snap_zform"] = int_df.loc[:, "snap_zform"] + offset
         # create a flag for gc particles that have survived until z = 0
-        int_df.loc[:, "survive_flag"] = np.where(int_df["logM(z=0)"] != -1, 1, 0)
+        int_df.loc[:, "survive_flag"] = np.where(int_df["logm_z0"] != -1, 1, 0)
 
         # open file of all snapshots into a table
         with open(fire_dir + snapshot_fil) as f:
@@ -105,19 +126,35 @@ def convert_data(it: int, offset: int, fire_dir: str, data_dir: str, public_snap
         snap_pub = ascii.read(content)["index"]
 
         # get the closest public snapshot available after the formation of the gc
-        pub_idx = np.searchsorted(np.array(snap_pub), int_df["snapnum(zform)"])
+        pub_idx = np.searchsorted(np.array(snap_pub), int_df["snap_zform"])
         pub_idx = [len(pub_idx) if idx == len(pub_idx) else idx for idx in pub_idx]
-        int_df["pubsnap(zform)"] = [snap_pub[idx] for idx in pub_idx]
+        int_df["pubsnap_zform"] = [snap_pub[idx] for idx in pub_idx]
 
         # get last snap where alive
         dis_idx = np.searchsorted(np.array(snap_all["time[Gyr]"]), int_df["t_dis"])
         dis_idx = [len(dis_idx) if idx == len(dis_idx) else idx for idx in dis_idx]
         int_df["last_snap"] = [snap_all["i"][idx - 1] for idx in dis_idx]
 
-        # set a "real flag" which excludes gc's that have been disrupted but do not have a time of discruption.
-        # the candidates for this are usually repeated gc particle ids in adjacent public snapshots.
-        int_df.loc[:, "real_flag"] = np.where((int_df["logM(z=0)"] == -1) & (int_df["t_dis"] == -1), 0, 1)
+        # set a "real flag" which excludes gc's that have been disrupted but do not have a time of discruption
+        # the candidates for this are usually repeated gc particle ids in adjacent public snapshots
+        int_df.loc[:, "real_flag"] = np.where((int_df["logm_z0"] == -1) & (int_df["t_dis"] == -1), 0, 1)
 
-    # save data to hdf5
-    save_file = int_dir + "int_it_%d.hdf5" % it
-    int_df.to_hdf(save_file, key="df", mode="w")
+    sim = data_dir[-4:]  # simulation name (e.g. m12i)
+    save_file = data_dir + "/" + sim + "_processed.hdf5"  # save location
+
+    if not os.path.exists(save_file):
+        h5py.File(save_file, "w")
+
+    with h5py.File(save_file, "a") as hdf:
+        if it_group in hdf.keys():
+            grouping = hdf[it_group]
+        else:
+            grouping = hdf.create_group(it_group)
+        if "source" in grouping.keys():
+            source = grouping["source"]
+        else:
+            source = grouping.create_group("source")
+        for key in int_df.keys():
+            if key in source.keys():
+                del source[key]
+            source.create_dataset(key, data=np.array(int_df[key]))

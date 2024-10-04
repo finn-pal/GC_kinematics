@@ -1,6 +1,5 @@
-import halo_analysis as halo
+import h5py
 import numpy as np
-import pandas as pd
 from astropy.io import ascii
 from tqdm import tqdm
 
@@ -9,8 +8,8 @@ from tools.utils import (
     enable_print,
     get_descendants_halt,
     get_halo_cid,
+    iteration_name,
     main_prog_halt,
-    naming_value,
 )
 
 
@@ -48,16 +47,15 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
 
     Returns:
         dict:
-            0 -> Accretion flag (1 for ex-situ formation, 0 for in-situ formation)
-            1 -> Time of accretion (Time when gc is now assigned to a most massive progenitor of the main
+            0 -> Time of accretion (Time when gc is now assigned to a most massive progenitor of the main
                 galaxy)
-            2 -> Halo tree halo id of the gc at the time of accretion
-            3 -> Halo catalogue halo id of the gc at the time of accretion
-            4 -> Snapshot at the time of accretion
-            5 -> Halo tree halo id of the gc at the snapshot before accretion
-            6 -> Halo catalogue halo id of the gc at the snapshot before accretion
-            7 -> Snapshot at the snapshot before accretion
-            8 -> Survived accretion flag. If gc is disrupted at accretion set to 0. If discrupted before
+            1 -> Halo tree halo id of the gc at the time of accretion
+            2 -> Halo catalogue halo id of the gc at the time of accretion
+            3 -> Snapshot at the time of accretion
+            4 -> Halo tree halo id of the gc at the snapshot before accretion
+            5 -> Halo catalogue halo id of the gc at the snapshot before accretion
+            6 -> Snapshot at the snapshot before accretion
+            7 -> Survived accretion flag. If gc is disrupted at accretion set to 0. If discrupted before
                 accretion or if not relevant set to -1 otherwise if survived accretion set to 1
     """
     # snapshot times file
@@ -65,7 +63,6 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
 
     # if gc is not accreted then list acc_flag as 0 and other all values as -1
     if halo_tid in tid_main_lst:
-        acc_flag = 0
         t_acc = -1
         halo_acc_tid = -1
         halo_acc_cid = -1
@@ -98,7 +95,6 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
         if (t_dis == -1) or (t_dis > t_acc):
             idx_pre_acc = idx_acc - 1
 
-            acc_flag = 1
             t_acc = t_acc
             halo_acc_tid = halt["tid"][desc_lst[idx_acc]]
             halo_acc_cid, snap_acc = get_halo_cid(halt, halo_acc_tid, fire_dir)
@@ -110,7 +106,6 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
         elif t_dis == t_acc:
             idx_pre_acc = idx_acc - 1
 
-            acc_flag = 1
             t_acc = t_acc
             halo_acc_tid = halt["tid"][desc_lst[idx_acc]]
             halo_acc_cid, snap_acc = get_halo_cid(halt, halo_acc_tid, fire_dir)
@@ -120,7 +115,6 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
 
         # if gc disrupted before halo is accreted then set all values to -1
         else:
-            acc_flag = 0
             t_acc = -1
             halo_acc_tid = -1
             halo_acc_cid = -1
@@ -131,7 +125,6 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
             acc_survive = -1
 
     accretion_dict = {
-        "accretion_flag": acc_flag,
         "accretion_time": t_acc,
         "accretion_halo_tid": halo_acc_tid,
         "accretion_halo_cid": halo_acc_cid,
@@ -145,33 +138,50 @@ def get_accretion(halt, halo_tid: int, tid_main_lst: list, fire_dir: str, t_dis:
     return accretion_dict
 
 
-def group_accretion(df: pd.DataFrame) -> list[int]:
+def group_accretion(
+    accretion_flag: list[int], pre_accretion_halo_tid: list[int], analyse_flag: list[int]
+) -> list:
     """
     Group accretion's together for easy identification. Group 0 is in-situ formation, -1 is gc's disrupted
     before accretion and all other values relate to the halo tid of the gc the snapshot before accretion.
 
     Args:
-        df (pd.DataFrame): processed data frame
+        accretion_flag (list[int]): Accretion flag (0 for in-situ, 1 for accreted).
+        pre_accretion_halo_tid (list[int]): Halo of GC in snapshot before it is accreted.
+        analyse_flag (list[int]): Flag to check whether to analyse or not (0 is skip, 1 is to analyse).
 
     Returns:
-        list[int]: list of group id's to be added to dataframe
+        list[int]: list of group id's to be added to data tables
     """
     group_id_lst = []
 
-    for pre_acc_halo_tid, accretion_flag in zip(df["pre_accretion_halo_tid"], df["accretion_flag"]):
-        if accretion_flag == 0:
+    for pre_acc_tid, accr_flag, an_flag in zip(pre_accretion_halo_tid, accretion_flag, analyse_flag):
+        if an_flag == 0:
+            group_id_lst.append(np.nan)
+            continue
+
+        if accr_flag == 0:
             group_id_lst.append(0)
 
-        elif pre_acc_halo_tid == -1:
+        elif pre_acc_tid == -1:
             group_id_lst.append(-1)
 
         else:
-            group_id_lst.append(pre_acc_halo_tid)
+            group_id_lst.append(pre_acc_tid)
 
     return group_id_lst
 
 
-def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_flag=None, accretion_flag=None):
+def process_data(
+    it: int,
+    fire_dir: str,
+    data_dir: str,
+    main_halo_tid: int,
+    halt,
+    real_flag=1,
+    survive_flag=None,
+    accretion_flag=None,
+):
     """
     Process interim data and add additional information necessary for analysis. This includes deriving
     accretion information about the gc particles. There is also the option to filter out based on flags.
@@ -180,6 +190,7 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
         it (int): Iteration number. This realtes to the randomiser seed used in the gc model.
         fire_dir (str): Directory of the FIRE simulation data (of form "/m12i_res7100").
         data_dir (str): Directory where raw / interim / processed data is stored (of form "result/m12i").
+        main_halo_tid (int): Mian halo tree halo id
         real_flag (int, optional): 0 means not real (see convert_data function for details). 1 means real.
             None means to include both. Defaults to 1.
         survive_flag (_type_, optional): 0 means has not survived. 1 means has survived. None means to include
@@ -187,51 +198,49 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
         accretion_flag (_type_, optional): 0 means has not been accreted. 1 means has been accreted. None
             means to include both. Defaults to None.
     """
-    for _ in tqdm(range(10), desc="Retrieving Tree..."):
-        block_print()
-        halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
-        enable_print()
 
     # get list of main progenitors of most massive galaxy across all redshifts
-    tid_main_lst = main_prog_halt(halt)
+    tid_main_lst = main_prog_halt(halt, main_halo_tid)
 
-    # file details
-    int_dir = data_dir + "/interim/"
-    pro_dir = data_dir + "/processed/"
+    sim = data_dir[-4:]  # simulation name (e.g. m12i)
+    data_file = data_dir + "/" + sim + "_processed.hdf5"  # file location
 
-    # open interim data file
-    int_df = pd.read_hdf(int_dir + "int_it_%d.hdf5" % it, "df")
-    pro_df = int_df.copy()
+    int_data = h5py.File(data_file, "r")  # open interim data file
 
-    # filter based on real flag
-    if real_flag is None:
-        pro_df = pro_df
-    else:
-        pro_df = pro_df[pro_df["real_flag"] == real_flag]
-        pro_df = pro_df.reset_index(drop=True)
+    # get group from iteration (it)
+    it_id = iteration_name(it)
 
-    # filter based on survive flag
-    if survive_flag is None:
-        pro_df = pro_df
-    else:
-        pro_df = pro_df[pro_df["survive_flag"] == survive_flag]
-        pro_df = pro_df.reset_index(drop=True)
+    # relevant list of flags
+    real_flag_lst = int_data[it_id]["source"]["real_flag"]
+    surv_flag_lst = int_data[it_id]["source"]["survive_flag"]
 
-    # get accretion flag
-    halo_tid_lst = pro_df["halo(zform)"]
-    acc_flag_list = []
-    for halo_tid in halo_tid_lst:
-        if halo_tid in tid_main_lst:
-            acc_flag_list.append(0)
-        else:
-            acc_flag_list.append(1)
-    pro_df.loc[:, "accretion_flag"] = acc_flag_list
+    # if gc was formed in a halo that is a main projenitor of the main halo at z = 0 then it was not accreted
+    # 1 is accreted 0 is not accreted
+    accr_flag_lst = [1 if mpb == 0 else 0 for mpb in int_data[it_id]["source"]["is_mpb"]]
 
-    # filter based on accretion flag
-    if accretion_flag is None:
-        pro_df = pro_df
-    else:
-        pro_df = pro_df[pro_df["accretion_flag"] == accretion_flag]
+    analyse_flag = []  # based on flags in function variables (0 = skip, 1 = analyse)
+
+    # based on flags this for loop determines which GCs to analyse and which to skip
+    for r_flag, s_flag, a_flag in zip(real_flag_lst, surv_flag_lst, accr_flag_lst):
+        if real_flag is not None:
+            if r_flag != real_flag:
+                analyse_flag.append(0)
+                continue
+
+        if survive_flag is not None:
+            if s_flag != survive_flag:
+                analyse_flag.append(0)
+                continue
+
+        if accretion_flag is not None:
+            if a_flag != accretion_flag:
+                analyse_flag.append(0)
+                continue
+
+        analyse_flag.append(1)
+
+    halo_zform = int_data[it_id]["source"]["halo_zform"]
+    t_dis = int_data[it_id]["source"]["t_dis"]
 
     # empty lists to be filled
     t_acc_lst = []
@@ -243,13 +252,33 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
     snap_pre_acc_lst = []
     acc_survive_lst = []
 
+    # if analyse flag is 0 then give the following values as nan
+    accretion_dict_skip = {
+        "accretion_time": np.nan,
+        "accretion_halo_tid": np.nan,
+        "accretion_halo_cid": np.nan,
+        "accretion_snapshot": np.nan,
+        "pre_accretion_halo_tid": np.nan,
+        "pre_accretion_halo_cid": np.nan,
+        "pre_accretion_snapshot": np.nan,
+        "survived_accretion": np.nan,
+    }
+
     # get accretion information where relevant
-    for halo_form, t_dis in tqdm(
-        zip(pro_df["halo(zform)"], pro_df["t_dis"]), total=len(pro_df), desc="Processing Data..."
+    for h_form, t_d, an_flag in tqdm(
+        zip(halo_zform, t_dis, analyse_flag),
+        ncols=150,
+        total=len(analyse_flag),
+        desc=it_id + " Processing Data....................",
     ):
-        block_print()
-        accretion_dict = get_accretion(halt, halo_form, tid_main_lst, fire_dir, t_dis)
-        enable_print()
+        # is analysis flag = 0 then set to np.nan and skip
+        if an_flag == 0:
+            accretion_dict = accretion_dict_skip
+
+        else:
+            block_print()
+            accretion_dict = get_accretion(halt, h_form, tid_main_lst, fire_dir, t_d)
+            enable_print()
 
         t_acc_lst.append(accretion_dict["accretion_time"])
         halo_acc_tid_lst.append(accretion_dict["accretion_halo_tid"])
@@ -260,32 +289,43 @@ def process_data(it: int, fire_dir: str, data_dir: str, real_flag=1, survive_fla
         snap_pre_acc_lst.append(accretion_dict["pre_accretion_snapshot"])
         acc_survive_lst.append(accretion_dict["survived_accretion"])
 
-    # add accretion information to dataframe
-    pro_df.loc[:, "accretion_time"] = t_acc_lst
-    pro_df.loc[:, "accretion_halo_tid"] = halo_acc_tid_lst
-    pro_df.loc[:, "accretion_halo_cid"] = halo_acc_cid_lst
-    pro_df.loc[:, "accretion_snapshot"] = snap_acc_lst
-    pro_df.loc[:, "pre_accretion_halo_tid"] = halo_pre_acc_tid_lst
-    pro_df.loc[:, "pre_accretion_halo_cid"] = halo_pre_acc_cid_lst
-    pro_df.loc[:, "pre_accretion_snapshot"] = snap_pre_acc_lst
-    pro_df.loc[:, "survived_accretion"] = acc_survive_lst
-
     ptype_lst = []
-    for qual in pro_df["quality"]:
+    for qual in int_data[it_id]["source"]["quality"]:
         ptype = particle_type(qual)
         ptype_lst.append(ptype)
 
-    pro_df.loc[:, "ptype"] = ptype_lst
-
     # add accretion group
-    group_id_lst = group_accretion(pro_df)
-    pro_df.loc[:, "group_id"] = group_id_lst
+    group_id_lst = group_accretion(analyse_flag, halo_pre_acc_tid_lst, analyse_flag)
+    int_data.close()
 
-    # file naming based on flags used such as to ensure different filtered data is not overwritten
-    r = naming_value(real_flag)
-    s = naming_value(survive_flag)
-    a = naming_value(accretion_flag)
+    it_dict = {
+        "accretion_flag": accr_flag_lst,
+        "analyse_flag": analyse_flag,
+        "t_acc": t_acc_lst,
+        "halo_acc_tid": halo_acc_tid_lst,
+        "halo_acc_cid": halo_acc_cid_lst,
+        "snap_acc": snap_acc_lst,
+        "halo_pre_acc_tid": halo_pre_acc_tid_lst,
+        "halo_pre_acc_cid": halo_pre_acc_cid_lst,
+        "snap_pre_acc": snap_pre_acc_lst,
+        "survived_accretion": acc_survive_lst,
+        "ptype": ptype_lst,
+        "group_id": group_id_lst,
+    }
 
-    # save file to hdf5
-    save_file = pro_dir + "pro_it%d_r%d_s%d_a%d.hdf5" % (it, r, s, a)
-    pro_df.to_hdf(save_file, key="df", mode="w")
+    with h5py.File(data_file, "a") as hdf:
+        if it_id in hdf.keys():
+            grouping = hdf[it_id]
+        else:
+            grouping = hdf.create_group(it_id)
+        if "source" in grouping.keys():
+            source = grouping["source"]
+        else:
+            source = grouping.create_group("source")
+        for key in it_dict.keys():
+            if key in source.keys():
+                del source[key]
+            if key == "ptype":
+                source.create_dataset(key, data=it_dict[key])
+            else:
+                source.create_dataset(key, data=np.array(it_dict[key]))

@@ -1,139 +1,209 @@
-import gizmo_analysis as gizmo
+# %%
+
+import agama
 import h5py
-import halo_analysis as halo
 import numpy as np
-import pandas as pd
-from astropy import units as u
-from astropy.io import ascii
-from utils import naming_value
+import utilities as ut
 
-#################### function inputs
-it = 0
+from tools.utils import iteration_name, snapshot_name
 
-fire_dir = "/Volumes/My Passport for Mac/m12i_res7100"
-data_dir = "/Users/z5114326/Documents/GitHub/GC_kinematics/data/result/m12i"
-public_snapshot_fil = "/Users/z5114326/Documents/GitHub/GC_kinematics/data/external/snapshot_times_public.txt"
+# function inputs
+# fire_dir = "/Volumes/My Passport for Mac/m12i_res7100"
+# data_dir = "/Users/z5114326/Documents/GitHub/GC_kinematics/data/result/m12i"
+# snap_num = 600
+# it = 0
+# host_index = 0  # this should be fixed
 
-# processing file flags
-file_real_flag = 1  # (1 for just real, 0 for just not real, None for both)
-file_survive_flag = None  # (1 for survive, 0 for disrupted, None for both)
-file_accretion_flag = None  # (1 for accreted, 0 for not accreted, None for both)
-
-##### TIEM VARYING IOM WILL BE HARD TO DO WITH GC THAT HAVE DIED IN TERMS OF PARTICLE TRACKING. THINK ON THIS
-
-# flags of interest (sort this out in terms of None, atm I just ignore that filter)
-real_flag = 1
-survive_flag = 1  # has survived
-accretion_flag = None  # formed in-situ
-
-# snap shots to investigate
-snap_lst = []
+# The below function should be implemented in run_data_processing:
 
 
-#################### Classes #############
+# should be a bit different should iterate through snpas rather than it
+# this function should just take a single it and snap as inputs
 
 
-#################### Functions #############
+def get_kinematics(part, it: int, snap_num: int, data_dir: str, host_index: int = 0):
+    it_id = iteration_name(it)
 
+    sim = data_dir[-4:]  # simulation name (e.g. m12i)
+    data_file = data_dir + "/" + sim + "_processed.hdf5"  # file location
+    potential_file = data_dir + "/potentials/snap_%d.ini" % snap_num
 
-def extract(lst: list, idx: int) -> list[float]:
-    return [item[idx] for item in lst]
+    pro_data = h5py.File(data_file, "a")  # open processed data file
+    pot_nbody = agama.Potential(potential_file)
 
+    gc_id = pro_data[it_id]["source"]["gc_id"]
+    analyse_flag = pro_data[it_id]["source"]["analyse_flag"]
+    group_id = pro_data[it_id]["source"]["group_id"]
 
-#################### start function
+    snap_zform = pro_data[it_id]["source"]["snap_zform"]
+    snap_last = pro_data[it_id]["source"]["last_snap"]
 
-# file details
-pro_dir = data_dir + "/processed/"
+    ptypes_byte = pro_data[it_id]["source"]["ptype"]
+    ptypes = [ptype.decode("utf-8") for ptype in ptypes_byte]
 
-r = naming_value(file_real_flag)
-s = naming_value(file_survive_flag)
-a = naming_value(file_accretion_flag)
+    # need to make a function to state if the gc is alive at the snapshot in question
+    gc_id_kin = []
+    group_id_kin = []
+    ptype_kin = []
 
-# save file to hdf5
-pro_file = pro_dir + "pro_it%d_r%d_s%d_a%d.hdf5" % (it, r, s, a)
+    for gc, group, ptype, a_flag, snap_form, snap_disr in zip(
+        gc_id, group_id, ptypes, analyse_flag, snap_zform, snap_last
+    ):
+        if a_flag == 0:
+            continue
 
-# halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
+        if (snap_num < snap_form) or (snap_disr < snap_num):
+            continue
 
-# open interim data file
-pro_df = pd.read_hdf(pro_file, "df")
-fil_df = pro_df.copy()  # filtered dataframe
+        gc_id_kin.append(gc)
+        group_id_kin.append(group)
+        ptype_kin.append(ptype)
 
-fil_df = fil_df[(fil_df["real_flag"] == real_flag) & (fil_df["survive_flag"] == survive_flag)]
-fil_df = fil_df.reset_index(drop=True)
+    # pro_data.close()
 
-if snap_lst == []:
-    # open file of public snapshots into a table
-    with open(public_snapshot_fil) as f:
-        content = f.readlines()
-        content = content[13:]
-    pub_snap = ascii.read(content)["index"]
+    host_name = ut.catalog.get_host_name(host_index)
+    af = agama.ActionFinder(pot_nbody, interp=False)
 
-min_snap = np.min(fil_df["pubsnap(zform)"])
-snap_lst = [snap for snap in snap_lst if snap >= min_snap]
+    x_lst = []
+    y_lst = []
+    z_lst = []
+    vx_lst = []
+    vy_lst = []
+    vz_lst = []
 
-snap = 600
-part = gizmo.io.Read.read_snapshots(["star", "dark"], "index", snap, fire_dir)
+    r_cyl_lst = []
+    phi_cyl_lst = []
+    vr_cyl_lst = []
+    vphi_cyl_lst = []
 
-gc_id_lst = []
-ptype_lst = []
-group_id_lst = []
-snapform_lst = []
-position_lst = []
-velocity_lst = []
-ang_mom_lst = []
-ek_lst = []
-ep_lst = []
+    r_lst = []
+    r_per_lst = []
+    r_apo_lst = []
 
-for gc_id, ptype, group_id, snap_form in zip(
-    fil_df["GC_ID"], fil_df["ptype"], fil_df["group_id"], fil_df["snapnum(zform)"]
-):
-    idx = np.where(part[ptype]["id"] == gc_id)[0][0]
-    position = part[ptype].prop("host1.distance", idx)
-    velocity = part[ptype].prop("host1.velocity", idx)
-    # position = part[ptype]["position"][idx]
-    # velocity = part[ptype]["velocity"][idx]
-    # ep = part[ptype]["potential"][idx]
-    ep = part[ptype].prop("potential", idx)
-    ek = 0.5 * np.linalg.norm(velocity) ** 2
-    lx = position[1] * velocity[2] - position[2] * velocity[1]
-    ly = position[2] * velocity[0] - position[0] * velocity[2]
-    lz = position[0] * velocity[1] - position[1] * velocity[0]
-    l_vec = [lx, ly, lz]
+    ep_fire_lst = []
+    ep_agama_lst = []
+    ek_lst = []
+    et_lst = []
 
-    gc_id_lst.append(gc_id)
-    ptype_lst.append(ptype)
-    group_id_lst.append(group_id)
-    snapform_lst.append(snap_form)
-    position_lst.append(position)
-    velocity_lst.append(velocity)
-    ang_mom_lst.append(l_vec)
-    ek_lst.append(ek)
-    ep_lst.append(ep)
+    lx_lst = []
+    ly_lst = []
+    lz_lst = []
 
-kin_dict = {
-    "GC_ID": gc_id_lst,
-    "ptype": ptype_lst,
-    "group_id": group_id_lst,
-    "snapform": snapform_lst,
-    "x": extract(position_lst, 0),
-    "y": extract(position_lst, 1),
-    "z": extract(position_lst, 2),
-    "vx": extract(velocity_lst, 0),
-    "vy": extract(velocity_lst, 1),
-    "vz": extract(velocity_lst, 2),
-    "lx": extract(ang_mom_lst, 0),
-    "ly": extract(ang_mom_lst, 1),
-    "lz": extract(ang_mom_lst, 2),
-    "ek": ek_lst,
-    "ep": ep_lst,
-}
+    jr_lst = []
+    jz_lst = []
+    jphi_lst = []
 
-kin_df = pd.DataFrame(kin_dict)
+    for gc, ptype in zip(gc_id_kin, ptype_kin):
+        idx = np.where(part[ptype]["id"] == gc)[0][0]
+        pos_xyz = part[ptype].prop(f"{host_name}.distance.principal", idx)
+        vel_xyz = part[ptype].prop(f"{host_name}.velocity.principal", idx)
 
-r = naming_value(real_flag)
-s = naming_value(survive_flag)
-a = naming_value(accretion_flag)
+        pos_cyl = part[ptype].prop(f"{host_name}.distance.principal.cylindrical", idx)
+        vel_cyl = part[ptype].prop(f"{host_name}.velocity.principal.cylindrical", idx)
 
-save_file = pro_dir + "kin_it%d_r%d_s%d_a%d.hdf5" % (it, r, s, a)
-kin_df.to_hdf(save_file, key="df", mode="w")
-# kin_df.to_csv("kin_out.csv", index=False)
+        ep_fir = part[ptype]["potential"][idx]
+
+        init_cond = np.concatenate((pos_xyz, vel_xyz))
+
+        ep_aga = pot_nbody.potential(pos_xyz)
+        r_per, r_apo = pot_nbody.Rperiapo(init_cond)
+
+        ek = 0.5 * np.linalg.norm(vel_xyz) ** 2
+        et = ek + ep_aga
+
+        x, y, z = pos_xyz
+        vx, vy, vz = vel_xyz
+
+        r_cyl, phi_cyl, _ = pos_cyl
+        vr_cyl, vphi_cyl, _ = vel_cyl
+
+        r = np.linalg.norm(pos_xyz)
+
+        lx = y * vz - z * vy
+        ly = z * vx - x * vz
+        lz = x * vy - y * vx
+
+        jr, jz, jphi = af(init_cond)
+
+        x_lst.append(x)
+        y_lst.append(y)
+        z_lst.append(z)
+        vx_lst.append(vx)
+        vy_lst.append(vy)
+        vz_lst.append(vz)
+
+        r_cyl_lst.append(r_cyl)
+        phi_cyl_lst.append(phi_cyl)
+        vr_cyl_lst.append(vr_cyl)
+        vphi_cyl_lst.append(vphi_cyl)
+
+        r_lst.append(r)
+        r_per_lst.append(r_per)
+        r_apo_lst.append(r_apo)
+
+        ep_fire_lst.append(ep_fir)
+        ep_agama_lst.append(ep_aga)
+        ek_lst.append(ek)
+        et_lst.append(et)
+
+        lx_lst.append(lx)
+        ly_lst.append(ly)
+        lz_lst.append(lz)
+
+        jr_lst.append(jr)
+        jz_lst.append(jz)
+        jphi_lst.append(jphi)
+
+    kin_dict = {
+        "gc_id": gc_id_kin,
+        "ptype": ptype_kin,
+        "group_id": group_id_kin,
+        "x": x_lst,
+        "y": y_lst,
+        "z": z_lst,
+        "vx": vx_lst,
+        "vy": vy_lst,
+        "vz": vz_lst,
+        "r_cyl": r_cyl_lst,
+        "phi_cyl": phi_cyl_lst,
+        "vr_cyl": vr_cyl_lst,
+        "vphi_cyl": vphi_cyl_lst,
+        "r": r_lst,
+        "r_peri": r_per_lst,
+        "r_apoo": r_apo_lst,
+        "ep_fire": ep_fire_lst,
+        "ep_agama": ep_agama_lst,
+        "ek": ek_lst,
+        "et": et_lst,
+        "lx": lx_lst,
+        "ly": ly_lst,
+        "lz": lz_lst,
+        "jr": jr_lst,
+        "jz": jz_lst,
+        "jphi": jphi_lst,
+    }
+
+    snap_id = snapshot_name(snap_num)
+
+    # with h5py.File(data_file, "a") as hdf:
+    if it_id in pro_data.keys():
+        grouping = pro_data[it_id]
+    else:
+        grouping = pro_data.create_group(it_id)
+    if "kinematics" in grouping.keys():
+        kinematics = grouping["kinematics"]
+    else:
+        kinematics = grouping.create_group("kinematics")
+    if snap_id in kinematics.keys():
+        snap_group = kinematics[snap_id]
+    else:
+        snap_group = kinematics.create_group(snap_id)
+    for key in kin_dict.keys():
+        if key in snap_group.keys():
+            del snap_group[key]
+        if key == "ptype":
+            snap_group.create_dataset(key, data=kin_dict[key])
+        else:
+            snap_group.create_dataset(key, data=np.array(kin_dict[key]))
+
+    pro_data.close()
